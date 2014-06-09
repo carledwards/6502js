@@ -18,12 +18,19 @@ function SimulatorWidget(node) {
   var labels = Labels();
   var simulator = Simulator();
   var assembler = Assembler();
+  var executionHistoryElement;
+  var executionHistory = Array();
+  var executionNames = ['pc','bytes','opCode','a','x','y','sp','s'];
+  var cycles = 0;
 
-  function initialize() {
+
+
+    function initialize() {
     stripText();
     ui.initialize();
     display.initialize();
     simulator.reset();
+    initExecutionHistory(executionNames);
 
     $node.find('.assembleButton').click(function () {
       assembler.assembleCode();
@@ -1519,6 +1526,7 @@ function SimulatorWidget(node) {
 
 
     function executeNextInstruction() {
+      var startingPC = regPC;
       var instructionName = popByte().toString(16).toLowerCase();
       if (instructionName.length === 1) {
         instructionName = '0' + instructionName;
@@ -1526,10 +1534,14 @@ function SimulatorWidget(node) {
       var instruction = instructions['i' + instructionName];
 
       if (instruction) {
-        instruction();
+          instruction();
+          cycles++;
       } else {
         instructions.ierr();
       }
+
+      // log after execution so the registers reflect the effect of the opCode
+      appendExecutionHistory(cycles, executionNames, assembler.getExecutionInfo(startingPC, regA, regX, regY, regSP, regP));
     }
 
     // execute() - Executes one instruction.
@@ -1618,6 +1630,7 @@ function SimulatorWidget(node) {
 
     // reset() - Reset CPU and memory.
     function reset() {
+      initExecutionHistory(executionNames);
       display.reset();
       for (var i = 0; i < 0x600; i++) { // clear ZP, stack and screen
         memory.set(i, 0x00);
@@ -2410,6 +2423,18 @@ function SimulatorWidget(node) {
         addArg: function (arg) {
           args.push(arg);
         },
+        getAddress: function () {
+          return '$' + addr2hex(address);
+        },
+        getBytesAsString: function () {
+            return bytes.map(num2hex).join(' ');
+        },
+        getOpCode: function () {
+            return opCode;
+        },
+        getFormattedArguments: function () {
+            return formatArguments();
+        },
         toString: function () {
           var bytesString = bytes.map(num2hex).join(' ');
           var padding = Array(11 - bytesString.length).join(' ');
@@ -2417,6 +2442,43 @@ function SimulatorWidget(node) {
             ' ' + formatArguments(args);
         }
       };
+    }
+
+    function getExecutionInfo(regPC, regA, regX, regY, regSP, regP) {
+          var length;
+          var inst;
+          var byte;
+          var modeAndCode;
+          var startingPc = regPC;
+
+          inst = createInstruction(regPC);
+          byte = memory.get(regPC);
+          inst.addByte(byte);
+          modeAndCode = getModeAndCode(byte);
+          length = instructionLength[modeAndCode.mode];
+          inst.setModeAndCode(modeAndCode);
+          for (var i = 1; i < length; i++) {
+              regPC++;
+              byte = memory.get(regPC);
+              inst.addByte(byte);
+              inst.addArg(byte);
+          }
+
+        return {"pc": inst.getAddress(), "bytes": inst.getBytesAsString(),
+            "opCode": inst.getOpCode() + " " + inst.getFormattedArguments(),
+            "a": "$"+num2hex(regA),
+            "x": "$"+num2hex(regX),
+            "y": "$"+num2hex(regY),
+            "sp": "$"+num2hex(regSP),
+            "s": ((regP >> 7 & 1) ? "N" : "n")
+                 + ((regP >> 6 & 1) ? "V" : "v")
+                 + "-"
+                 + ((regP >> 4 & 1) ? "B" : "b")
+                 + ((regP >> 3 & 1) ? "D" : "d")
+                 + ((regP >> 2 & 1) ? "I" : "i")
+                 + ((regP >> 1 & 1) ? "Z" : "z")
+                 + ((regP >> 0 & 1) ? "C" : "c")
+        };
     }
 
     function disassemble() {
@@ -2457,6 +2519,7 @@ function SimulatorWidget(node) {
     return {
       assembleLine: assembleLine,
       assembleCode: assembleCode,
+      getExecutionInfo: getExecutionInfo,
       getCurrentPC: function () {
         return defaultCodePC;
       },
@@ -2483,7 +2546,37 @@ function SimulatorWidget(node) {
   }
 
 
-  initialize();
+    function initExecutionHistory(names){
+        executionHistory = Array(); // reset history
+        executionHistoryElement = $node.find('.executionHistoryList')[0];
+        if(executionHistoryElement==null)return;
+
+        names=names.map(function(x){return x.replace(/^-/,'')});
+        executionHistory = [];
+        executionHistory.push("<td class=header>" + names.join("</td><td class=header>") + "</td>");
+        executionHistoryElement.innerHTML = "<tr>"+executionHistory.join("</tr><tr>")+"</tr>";
+    }
+
+    function appendExecutionHistory(cycles, names, values){
+        var signals=[];
+        var odd=true;
+        var bg;
+        var row;
+
+        for(var i in names){
+            bg = cycles % 2 == 1 ? " class=oddcol" : " class=oddrow";
+            signals.push("<td" + bg + ">" + values[names[i]] + "</td>");
+            odd =! odd;
+        }
+        row = "<tr>" + signals.join("") + "</tr>";
+        executionHistory.push(row);
+
+        executionHistoryElement.innerHTML = executionHistory.join("");
+    }
+
+
+
+    initialize();
 }
 
 $(document).ready(function () {

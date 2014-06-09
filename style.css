@@ -88,3 +88,37 @@
   font-size: 12px;
   color: #444;
 }
+
+div#executionHistoryScroller {
+    margin: 10px 0;
+    overflow:auto;
+    border: 1px solid #999;
+}
+
+table.executionHistoryList {
+    font-family: monospace;
+    font-size: 12px;
+    border-collapse: collapse;
+    text-align:left;
+}
+
+td {
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+td.header {
+    background-color: rgb(187, 204, 255);  /* medium-dark blue */
+}
+
+td.oddcol {
+    background-color: rgb(227, 233, 255);  /* light blue */
+}
+
+td.oddrow {
+    background-color: rgb(207, 218, 255);  /* medium blue */
+}
+
+td.oddrowcol {
+    background-color: rgb(227, 233, 255);  /* light blue */
+}

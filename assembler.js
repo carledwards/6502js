@@ -20,7 +20,7 @@ function SimulatorWidget(node) {
   var assembler = Assembler();
   var executionHistoryElement;
   var executionHistory = Array();
-  var executionNames = ['pc','bytes','opCode','a','x','y','sp','s'];
+  var executionNames = ['pc','bytes','opCode','a','x','y','sp','s', 'tickCount'];
   var cycles = 0;
 
 
@@ -285,6 +285,30 @@ function SimulatorWidget(node) {
     var debug = false;
     var monitoring = false;
     var executeId;
+    var tickCount = 0;
+    var prevTickCount = 0;
+    var penaltyOp = false;
+    var penaltyAddr = false;
+
+    var Ticktable = [
+      /*        |  0  |  1  |  2  |  3  |  4  |  5  |  6  |  7  |  8  |  9  |  A  |  B  |  C  |  D  |  E  |  F  |     */
+      /* 0 */      7,    6,    2,    8,    3,    3,    5,    5,    3,    2,    2,    2,    4,    4,    6,    6,  /* 0 */
+      /* 1 */      2,    5,    2,    8,    4,    4,    6,    6,    2,    4,    2,    7,    4,    4,    7,    7,  /* 1 */
+      /* 2 */      6,    6,    2,    8,    3,    3,    5,    5,    4,    2,    2,    2,    4,    4,    6,    6,  /* 2 */
+      /* 3 */      2,    5,    2,    8,    4,    4,    6,    6,    2,    4,    2,    7,    4,    4,    7,    7,  /* 3 */
+      /* 4 */      6,    6,    2,    8,    3,    3,    5,    5,    3,    2,    2,    2,    3,    4,    6,    6,  /* 4 */
+      /* 5 */      2,    5,    2,    8,    4,    4,    6,    6,    2,    4,    2,    7,    4,    4,    7,    7,  /* 5 */
+      /* 6 */      6,    6,    2,    8,    3,    3,    5,    5,    4,    2,    2,    2,    5,    4,    6,    6,  /* 6 */
+      /* 7 */      2,    5,    2,    8,    4,    4,    6,    6,    2,    4,    2,    7,    4,    4,    7,    7,  /* 7 */
+      /* 8 */      2,    6,    2,    6,    3,    3,    3,    3,    2,    2,    2,    2,    4,    4,    4,    4,  /* 8 */
+      /* 9 */      2,    6,    2,    6,    4,    4,    4,    4,    2,    5,    2,    5,    5,    5,    5,    5,  /* 9 */
+      /* A */      2,    6,    2,    6,    3,    3,    3,    3,    2,    2,    2,    2,    4,    4,    4,    4,  /* A */
+      /* B */      2,    5,    2,    5,    4,    4,    4,    4,    2,    4,    2,    4,    4,    4,    4,    4,  /* B */
+      /* C */      2,    6,    2,    8,    3,    3,    5,    5,    2,    2,    2,    2,    4,    4,    6,    6,  /* C */
+      /* D */      2,    5,    2,    8,    4,    4,    6,    6,    2,    4,    2,    7,    4,    4,    7,    7,  /* D */
+      /* E */      2,    6,    2,    8,    3,    3,    5,    5,    2,    2,    2,    2,    4,    4,    6,    6,  /* E */
+      /* F */      2,    5,    2,    8,    4,    4,    6,    6,    2,    4,    2,    7,    4,    4,    7,    7   /* F */
+    ];
 
     //set zero and negative processor flags based on result
     function setNVflags(value) {
@@ -388,6 +412,7 @@ function SimulatorWidget(node) {
       } else {
         regPC = (regPC + offset);
       }
+
     }
 
     function overflowSet() {
@@ -497,6 +522,24 @@ function SimulatorWidget(node) {
       setNVflagsForRegA();
     }
 
+    function getMemoryYOffset(addr) {
+      var startPage = (addr & 0xFF00);
+      addr = addr + regY;
+      if (startPage != (addr & 0xFF00)) {
+        penaltyAddr = true;
+      }
+      return memory.get(addr);
+    }
+
+    function getMemoryXOffset(addr) {
+      var startPage = (addr & 0xFF00);
+      addr = addr + regX;
+      if (startPage != (addr & 0xFF00)) {
+        penaltyAddr = true;
+      }
+      return memory.get(addr);
+    }
+
     var instructions = {
       i00: function () {
         codeRunning = false;
@@ -558,7 +601,16 @@ function SimulatorWidget(node) {
 
       i10: function () {
         var offset = popByte();
-        if (!negativeSet()) { jumpBranch(offset); }
+        if (!negativeSet()) {
+          var oldPC = regPC;
+          jumpBranch(offset);
+          if ((oldPC & 0xFF00) != (regPC & 0xFF00)) {
+            tickCount += 2;
+          }
+          else {
+            tickCount += 1;
+          }
+        }
         //BPL
       },
 
@@ -589,14 +641,16 @@ function SimulatorWidget(node) {
       },
 
       i19: function () {
-        var addr = popWord() + regY;
-        regA |= memory.get(addr);
+        penaltyOp = true;
+        var addr = popWord();
+        regA |= getMemoryYOffset(addr);
         ORA();
       },
 
       i1d: function () {
-        var addr = popWord() + regX;
-        regA |= memory.get(addr);
+        penaltyOp = true;
+        var addr = popWord();
+        regA |= getMemoryXOffset(addr);
         ORA();
       },
 
@@ -691,7 +745,16 @@ function SimulatorWidget(node) {
 
       i30: function () {
         var offset = popByte();
-        if (negativeSet()) { jumpBranch(offset); }
+        if (negativeSet()) {
+          var oldPC = regPC;
+          jumpBranch(offset);
+          if ((oldPC & 0xFF00) != (regPC & 0xFF00)) {
+            tickCount += 2;
+          }
+          else {
+            tickCount += 1;
+          }
+        }
         //BMI
       },
 
@@ -724,15 +787,17 @@ function SimulatorWidget(node) {
       },
 
       i39: function () {
-        var addr = popWord() + regY;
-        var value = memory.get(addr);
+        penaltyOp = true;
+        var addr = popWord();
+        var value = getMemoryYOffset(addr);
         regA &= value;
         AND();
       },
 
       i3d: function () {
-        var addr = popWord() + regX;
-        var value = memory.get(addr);
+        penaltyOp = true;
+        var addr = popWord();
+        var value = getMemoryXOffset(addr);
         regA &= value;
         AND();
       },
@@ -816,13 +881,23 @@ function SimulatorWidget(node) {
 
       i50: function () {
         var offset = popByte();
-        if (!overflowSet()) { jumpBranch(offset); }
+        if (!overflowSet()) {
+          var oldPC = regPC;
+          jumpBranch(offset);
+          if ((oldPC & 0xFF00) != (regPC & 0xFF00)) {
+            tickCount += 2;
+          }
+          else {
+            tickCount += 1;
+          }
+        }
         //BVC
       },
 
       i51: function () {
+        penaltyOp = true;
         var zp = popByte();
-        var value = memory.getWord(zp) + regY;
+        var value = getMemoryYOffset(memory.getWord(zp));
         regA ^= memory.get(value);
         EOR();
       },
@@ -849,15 +924,17 @@ function SimulatorWidget(node) {
       },
 
       i59: function () {
-        var addr = popWord() + regY;
-        var value = memory.get(addr);
+        penaltyOp = true;
+        var addr = popWord();
+        var value = getMemoryYOffset(addr);
         regA ^= value;
         EOR();
       },
 
       i5d: function () {
-        var addr = popWord() + regX;
-        var value = memory.get(addr);
+        penaltyOp = true;
+        var addr = popWord();
+        var value = getMemoryXOffset(addr);
         regA ^= value;
         EOR();
       },
@@ -947,14 +1024,24 @@ function SimulatorWidget(node) {
 
       i70: function () {
         var offset = popByte();
-        if (overflowSet()) { jumpBranch(offset); }
+        if (overflowSet()) {
+          var oldPC = regPC;
+          jumpBranch(offset);
+          if ((oldPC & 0xFF00) != (regPC & 0xFF00)) {
+            tickCount += 2;
+          }
+          else {
+            tickCount += 1;
+          }
+        }
         //BVS
       },
 
       i71: function () {
+        penaltyOp = true;
         var zp = popByte();
         var addr = memory.getWord(zp);
-        var value = memory.get(addr + regY);
+        var value = getMemoryYOffset(addr);
         testADC(value);
         //ADC
       },
@@ -984,15 +1071,17 @@ function SimulatorWidget(node) {
       },
 
       i79: function () {
+        penaltyOp = true;
         var addr = popWord();
-        var value = memory.get(addr + regY);
+        var value = getMemoryYOffset(addr);
         testADC(value);
         //ADC
       },
 
       i7d: function () {
+        penaltyOp = true;
         var addr = popWord();
-        var value = memory.get(addr + regX);
+        var value = getMemoryXOffset(addr);
         testADC(value);
         //ADC
       },
@@ -1059,7 +1148,16 @@ function SimulatorWidget(node) {
 
       i90: function () {
         var offset = popByte();
-        if (!carrySet()) { jumpBranch(offset); }
+        if (!carrySet()) {
+          var oldPC = regPC;
+          jumpBranch(offset);
+          if ((oldPC & 0xFF00) != (regPC & 0xFF00)) {
+            tickCount += 2;
+          }
+          else {
+            tickCount += 1;
+          }
+        }
         //BCC
       },
 
@@ -1173,13 +1271,23 @@ function SimulatorWidget(node) {
 
       ib0: function () {
         var offset = popByte();
-        if (carrySet()) { jumpBranch(offset); }
+        if (carrySet()) {
+          var oldPC = regPC;
+          jumpBranch(offset);
+          if ((oldPC & 0xFF00) != (regPC & 0xFF00)) {
+            tickCount += 2;
+          }
+          else {
+            tickCount += 1;
+          }
+        }
         //BCS
       },
 
       ib1: function () {
+        penaltyOp = true;
         var zp = popByte();
-        var addr = memory.getWord(zp) + regY;
+        var addr = getMemoryYOffset(memory.getWord(zp));
         regA = memory.get(addr);
         LDA();
       },
@@ -1204,8 +1312,9 @@ function SimulatorWidget(node) {
       },
 
       ib9: function () {
-        var addr = popWord() + regY;
-        regA = memory.get(addr);
+        penaltyOp = true;
+        var addr = popWord();
+        regA = getMemoryYOffset(addr);
         LDA();
       },
 
@@ -1216,20 +1325,23 @@ function SimulatorWidget(node) {
       },
 
       ibc: function () {
-        var addr = popWord() + regX;
-        regY = memory.get(addr);
+        penaltyOp = true;
+        var addr = popWord();
+        regY = getMemoryXOffset(addr);
         LDY();
       },
 
       ibd: function () {
-        var addr = popWord() + regX;
-        regA = memory.get(addr);
+        penaltyOp = true;
+        var addr = popWord();
+        regA = getMemoryXOffset(addr);
         LDA();
       },
 
       ibe: function () {
-        var addr = popWord() + regY;
-        regX = memory.get(addr);
+        penaltyOp = true;
+        var addr = popWord();
+        regX = getMemoryYOffset(addr);
         LDX();
       },
 
@@ -1301,14 +1413,24 @@ function SimulatorWidget(node) {
 
       id0: function () {
         var offset = popByte();
-        if (!zeroSet()) { jumpBranch(offset); }
+        if (!zeroSet()) {
+          var oldPC = regPC;
+          jumpBranch(offset);
+          if ((oldPC & 0xFF00) != (regPC & 0xFF00)) {
+            tickCount += 2;
+          }
+          else {
+            tickCount += 1;
+          }
+        }
         //BNE
       },
 
       id1: function () {
+        penaltyOp = true;
         var zp = popByte();
-        var addr = memory.getWord(zp) + regY;
-        var value = memory.get(addr);
+        var addr = memory.getWord(zp);
+        var value = getMemoryYOffset(addr);
         doCompare(regA, value);
         //CMP
       },
@@ -1330,15 +1452,17 @@ function SimulatorWidget(node) {
       },
 
       id9: function () {
-        var addr = popWord() + regY;
-        var value = memory.get(addr);
+        penaltyOp = true;
+        var addr = popWord();
+        var value = getMemoryYOffset(addr);
         doCompare(regA, value);
         //CMP
       },
 
       idd: function () {
-        var addr = popWord() + regX;
-        var value = memory.get(addr);
+        penaltyOp = true;
+        var addr = popWord();
+        var value = getMemoryXOffset(addr);
         doCompare(regA, value);
         //CMP
       },
@@ -1416,14 +1540,23 @@ function SimulatorWidget(node) {
 
       if0: function () {
         var offset = popByte();
-        if (zeroSet()) { jumpBranch(offset); }
+        if (zeroSet()) {
+          var oldPC = regPC;
+          jumpBranch(offset);
+          if ((oldPC & 0xFF00) != (regPC & 0xFF00)) {
+            tickCount += 2;
+          }
+          else {
+            tickCount += 1;
+          }
+        }
         //BEQ
       },
 
       if1: function () {
         var zp = popByte();
         var addr = memory.getWord(zp);
-        var value = memory.get(addr + regY);
+        var value = getMemoryYOffset(addr);
         testSBC(value);
         //SBC
       },
@@ -1446,15 +1579,17 @@ function SimulatorWidget(node) {
       },
 
       if9: function () {
+        penaltyOp = true;
         var addr = popWord();
-        var value = memory.get(addr + regY);
+        var value = getMemoryYOffset(addr);
         testSBC(value);
         //SBC
       },
 
       ifd: function () {
+        penaltyOp = true;
         var addr = popWord();
-        var value = memory.get(addr + regX);
+        var value = getMemoryXOffset(addr);
         testSBC(value);
         //SBC
       },
@@ -1527,21 +1662,30 @@ function SimulatorWidget(node) {
 
     function executeNextInstruction() {
       var startingPC = regPC;
-      var instructionName = popByte().toString(16).toLowerCase();
+      var opCode = popByte();
+      var instructionName = opCode.toString(16).toLowerCase();
       if (instructionName.length === 1) {
         instructionName = '0' + instructionName;
       }
       var instruction = instructions['i' + instructionName];
 
       if (instruction) {
-          instruction();
-          cycles++;
+        penaltyAddr = false;
+        penaltyOp = false;
+        prevTickCount = tickCount;
+        instruction();
+        tickCount += Ticktable[opCode];
+        if (penaltyAddr && penaltyOp) {
+          tickCount += 1;
+        }
+        cycles++;
       } else {
         instructions.ierr();
       }
 
       // log after execution so the registers reflect the effect of the opCode
-      appendExecutionHistory(cycles, executionNames, assembler.getExecutionInfo(startingPC, regA, regX, regY, regSP, regP));
+      appendExecutionHistory(cycles, executionNames, assembler.getExecutionInfo(startingPC,
+        regA, regX, regY, regSP, regP, tickCount, prevTickCount));
     }
 
     // execute() - Executes one instruction.
@@ -1635,7 +1779,7 @@ function SimulatorWidget(node) {
       for (var i = 0; i < 0x600; i++) { // clear ZP, stack and screen
         memory.set(i, 0x00);
       }
-      regA = regX = regY = 0;
+      regA = regX = regY = tickCount = prevTickCount = 0;
       regPC = 0x600;
       regSP = 0xff;
       regP = 0x30;
@@ -2444,7 +2588,7 @@ function SimulatorWidget(node) {
       };
     }
 
-    function getExecutionInfo(regPC, regA, regX, regY, regSP, regP) {
+    function getExecutionInfo(regPC, regA, regX, regY, regSP, regP, tickCount, prevTickCount) {
           var length;
           var inst;
           var byte;
@@ -2477,7 +2621,8 @@ function SimulatorWidget(node) {
                  + ((regP >> 3 & 1) ? "D" : "d")
                  + ((regP >> 2 & 1) ? "I" : "i")
                  + ((regP >> 1 & 1) ? "Z" : "z")
-                 + ((regP >> 0 & 1) ? "C" : "c")
+                 + ((regP >> 0 & 1) ? "C" : "c") ,
+            "tickCount": tickCount + " (+" + (tickCount-prevTickCount) + ")"
         };
     }
 

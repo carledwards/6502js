@@ -1,5 +1,5 @@
 .widget {
-  width: 600px;
+  width: 1000px;
   margin: 30px auto;
   font-size: 12px;
   line-height: 1.5;
@@ -24,7 +24,7 @@
   margin: 0 0 6px 0;
   padding: 6px;
   border: 1px solid black;
-  width: 420px;
+  width: 820px;
   height: 290px;
   font-family: monospace;
   overflow: auto;
@@ -55,7 +55,7 @@
 }
 
 .monitorControls {
-  width: 587px;
+  width: 787px;
   clear: both;
   margin-bottom: 10px;
   padding: 0;
@@ -70,7 +70,7 @@
   padding: 6px;
   border: 1px solid #999;
   background-color: #ddd;
-  width: 587px;
+  width: 987px;
   height: 100px;
   overflow: auto;
   display: none;
@@ -82,7 +82,7 @@
   border: 1px solid #999;
   background-color: #eee;
   overflow: auto;
-  width: 587px;
+  width: 987px;
   height: 100px;
   text-align: left;
   font-size: 12px;

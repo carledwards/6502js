@@ -1744,6 +1744,13 @@ function SimulatorWidget(node) {
       if ((regPC === 0) || (!codeRunning && !debugging)) {
         stop();
         message("Program end at PC=$" + addr2hex(regPC - 1));
+
+        // to keep the display UI up to date, schedule the showing of the history
+        setTimeout($.proxy(function()
+        {
+          showHistory();
+        }, this), 10);
+
         ui.stop();
       }
     }
@@ -2738,6 +2745,9 @@ function SimulatorWidget(node) {
     $node.find('.messages code').append(text + '\n').scrollTop(10000);
   }
 
+  function showHistory(text) {
+    executionHistoryElement.innerHTML = executionHistory.join("");
+  }
 
     function initExecutionHistory(names){
         executionHistory = Array(); // reset history
@@ -2763,8 +2773,6 @@ function SimulatorWidget(node) {
         }
         row = "<tr>" + signals.join("") + "</tr>";
         executionHistory.push(row);
-
-        executionHistoryElement.innerHTML = executionHistory.join("");
     }
 
 
